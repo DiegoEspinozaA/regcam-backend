@@ -64,7 +64,7 @@ server.get("/locacionCamara/:id", (req, res) => {
 });
 
 server.get("/registros", (req, res) => {
-    let sql = "SELECT * from registros order by fecha desc";
+    let sql = "SELECT registros.id, registros.fecha, registros.tipo, registros.descripcion, registros.id_camara, eventos.color from registros join eventos on registros.tipo = eventos.tipo order by fecha desc";
     db.query(sql, (err, result) => {
         if (err) {
             console.log(err);
