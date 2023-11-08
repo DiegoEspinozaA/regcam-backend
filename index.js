@@ -4,7 +4,8 @@ const mysql = require('mysql');
 const cors = require('cors');
 const session = require('express-session');
 const jwt = require('jsonwebtoken');
-
+const moment = require('moment-timezone');
+moment.tz.setDefault('America/Santiago');
 server.use(session({
     secret: 'secret',
     resave: false,
@@ -91,7 +92,7 @@ server.post("/registrarEvento", (req, res) => {
 
 server.get("/registrosCamara/:id", (req, res) => {
     const { id } = req.params;
-    let sql = "select registros.id, registros.tipo, registros.fecha, eventos.color, registros.descripcion from registros join camara on registros.id_camara join eventos on eventos.tipo = registros.tipo = camara.id where camara.id = ?";
+    let sql = "select registros.id, registros.tipo, registros.fecha, eventos.color, registros.descripcion from registros join camara on registros.id_camara = camara.id join eventos on eventos.tipo = registros.tipo where registros.id_camara = ?";
     db.query(sql, [id], (err, result) => {
         if (err) {
             console.log(err);
@@ -210,6 +211,54 @@ server.post("/registrarEstado", (req, res) => {
         }
     })
 });
+
+
+
+server.get("/actualizarRegistro/:id", (req, res) => {
+    const { id } = req.params;
+    let sql = "select * from registros where id = ?";
+    db.query(sql, [id], (err, result) => {
+        if (err) {
+            res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
+        } else {
+            console.log(result[0].tipo, result[0].fecha, result[0].descripcion)
+            res.send(result);
+        }
+        
+    })
+})
+server.post("/actualizarRegistro", (req, res) => {
+    const { id_registro } = req.body;
+    const { tipo } = req.body;
+    const { descripcion } = req.body;
+    const { fecha } = req.body;
+    const { id_camara } = req.body;
+    const fecha_actual = moment().format('YYYY-MM-DD HH:mm:ss');
+
+    //obtener el estado actual del registro y mandarlo al historial
+    let estado_actual = "select * from registros where id = ?";
+    db.query(estado_actual, [id_registro], (err, result) => {
+        if (err) {
+            res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
+        } else {
+            let actualizar_historial = "insert into historial (id_registro, tipo, fecha, fecha_modificacion, descripcion) values (?,?,?,?,?)";
+            db.query(actualizar_historial, [id_registro, result[0].tipo, result[0].fecha, fecha_actual, result[0].descripcion], (err, result) => {
+                if (err) {
+                    res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
+                } else {
+                    let actualizar_estado_registro = "UPDATE registros SET fecha = ?, tipo = ?, descripcion = ?, id_camara = ? WHERE id = ?";
+                    db.query(actualizar_estado_registro, [fecha, tipo, descripcion, id_camara, id_registro], (err, result) => {
+                        if (err) {
+                            res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
+                        } else {
+                            res.send(result);
+                        }
+                    })
+                }
+            })
+        }
+    })
+})
 
 server.get("/historial/:id", (req, res) => {
     const id = req.params.id;
