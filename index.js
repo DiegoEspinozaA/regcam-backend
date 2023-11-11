@@ -92,7 +92,7 @@ server.post("/registrarEvento", (req, res) => {
 
 server.get("/registrosCamara/:id", (req, res) => {
     const { id } = req.params;
-    let sql = "select registros.id, registros.tipo, registros.fecha, eventos.color, registros.descripcion from registros join camara on registros.id_camara = camara.id join eventos on eventos.tipo = registros.tipo where registros.id_camara = ?";
+    let sql = "select registros.id, registros.id_camara, registros.tipo, registros.fecha, eventos.color, registros.descripcion from registros join camara on registros.id_camara = camara.id join eventos on eventos.tipo = registros.tipo where registros.id_camara = ?";
     db.query(sql, [id], (err, result) => {
         if (err) {
             console.log(err);
@@ -124,7 +124,7 @@ server.get("/locacionCamara/:id", (req, res) => {
 });
 
 server.get("/registros", (req, res) => {
-    let sql = "SELECT registros.id, registros.fecha, registros.tipo, registros.descripcion, registros.id_camara, eventos.color from registros join eventos on registros.tipo = eventos.tipo order by fecha desc";
+    let sql = "SELECT registros.id, registros.responsable, registros.fecha_creacion, registros.fecha, registros.tipo, registros.descripcion, registros.id_camara, eventos.color from registros join eventos on registros.tipo = eventos.tipo order by fecha_creacion desc";
     db.query(sql, (err, result) => {
         if (err) {
             console.log(err);
@@ -228,7 +228,7 @@ server.get("/actualizarRegistro/:id", (req, res) => {
     })
 })
 server.post("/actualizarRegistro", (req, res) => {
-    const { id_registro } = req.body;
+    const { id } = req.body;
     const { tipo } = req.body;
     const { descripcion } = req.body;
     const { fecha } = req.body;
@@ -237,17 +237,17 @@ server.post("/actualizarRegistro", (req, res) => {
 
     //obtener el estado actual del registro y mandarlo al historial
     let estado_actual = "select * from registros where id = ?";
-    db.query(estado_actual, [id_registro], (err, result) => {
+    db.query(estado_actual, [id], (err, result) => {
         if (err) {
             res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
         } else {
-            let actualizar_historial = "insert into historial (id_registro, tipo, fecha, fecha_modificacion, descripcion) values (?,?,?,?,?)";
-            db.query(actualizar_historial, [id_registro, result[0].tipo, result[0].fecha, fecha_actual, result[0].descripcion], (err, result) => {
+            let actualizar_historial = "insert into historial (id_registro, tipo, fecha, fecha_modificacion, descripcion, id_camara) values (?,?,?,?,?,?)";
+            db.query(actualizar_historial, [id, result[0].tipo, result[0].fecha, fecha_actual, result[0].descripcion, result[0].id_camara], (err, result) => {
                 if (err) {
                     res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
                 } else {
-                    let actualizar_estado_registro = "UPDATE registros SET fecha = ?, tipo = ?, descripcion = ?, id_camara = ? WHERE id = ?";
-                    db.query(actualizar_estado_registro, [fecha, tipo, descripcion, id_camara, id_registro], (err, result) => {
+                    let actualizar_estado_registro = "UPDATE registros SET fecha = ?, fecha_creacion = ?, tipo = ?, descripcion = ?, id_camara = ? WHERE id = ?";
+                    db.query(actualizar_estado_registro, [fecha, fecha_actual, tipo, descripcion, id_camara, id], (err, result) => {
                         if (err) {
                             res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
                         } else {
@@ -263,7 +263,7 @@ server.post("/actualizarRegistro", (req, res) => {
 server.get("/historial/:id", (req, res) => {
     const id = req.params.id;
 
-    let sql = "SELECT * from historial where id_registro = ?";
+    let sql = "SELECT * from historial where id_registro = ? order by fecha_modificacion desc";
     db.query(sql, [id], (err, result) => {
         if (err) {
             res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
@@ -277,8 +277,10 @@ server.post("/guardarRegistro", (req, res) => {
     const { tipo } = req.body;
     const { fecha } = req.body;
     const { descripcion } = req.body
-    let sql = "insert into registros (tipo, fecha, descripcion, id_camara) values (?,?,?,?)";
-    db.query(sql, [tipo, fecha, descripcion, id_camara], (err, result) => {
+    const {responsable} = req.body;
+    const fecha_actual = moment().format('YYYY-MM-DD HH:mm:ss');
+    let sql = "insert into registros (responsable, fecha_creacion, tipo, fecha, descripcion, id_camara) values (?,?,?,?,?,?)";
+    db.query(sql, [responsable, fecha_actual,  tipo, fecha, descripcion, id_camara], (err, result) => {
         if (err) {
             res.status(500).json({ error: "Hubo un error en la consulta a la base de datos" });
         } else {
