@@ -25,6 +25,7 @@ const db = mysql.createPool({
 
 server.use(express.json());
 server.use(cors());
+server.use(express.json());
 
 //login
 
@@ -220,6 +221,8 @@ server.get("/tiposEventos", (req, res) => {
 });
 
 
+
+
 server.get("/historialEstadoCamara/:idCamara", (req, res) => {
     const { idCamara } = req.params;
 
@@ -244,7 +247,7 @@ JOIN EstadoCamara EC2 ON HE1.idEstadoCamara = EC2.id
 WHERE 
     HE1.EstadoAnteriorId IS NOT NULL
 ORDER BY 
-    HE1.fechaInicio;
+    HE1.fechaInicio desc;
     `;
     
     db.query(sql, [idCamara], (err, result) => {
@@ -256,6 +259,41 @@ ORDER BY
         }
     });
 });
+
+server.get("/historialEstadoCamara", (req, res) => {
+
+    let sql = `
+    SELECT
+    HE1.idCamara,
+    EC1.nombre AS EstadoAnterior,
+    EC2.nombre AS EstadoActual,
+    HE1.fechaInicio AS FechaCambio
+    FROM 
+        (SELECT 
+            H.idCamara,
+            H.idEstadoCamara,
+            H.fechaInicio,
+            LAG(H.idEstadoCamara) OVER (PARTITION BY H.idCamara ORDER BY H.fechaInicio) AS EstadoAnteriorId
+        FROM 
+            HistorialEstado H) AS HE1
+    JOIN EstadoCamara EC1 ON HE1.EstadoAnteriorId = EC1.id
+    JOIN EstadoCamara EC2 ON HE1.idEstadoCamara = EC2.id
+    WHERE 
+        HE1.EstadoAnteriorId IS NOT NULL
+    ORDER BY 
+         HE1.fechaInicio desc;
+    `;
+    
+    db.query(sql, (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ error: "Error al obtener el historial de las cámaras" });
+        } else {
+            res.json(result);
+        }
+    });
+});
+
 
 
 server.post("/actualizarEstadoCamara", (req, res) => {
@@ -314,36 +352,27 @@ server.get("/estados", (req, res) => {
 });
 
 server.post("/crearCamara", (req, res) => {
-    // Aquí se espera que 'camaras' sea un array de objetos con la locación de cada cámara
-    const { camaras } = req.body;
-
-    // Preparar las consultas de inserción para las cámaras
-    let sqlCamara = "INSERT INTO Camara (locacion) VALUES ?";
-    let valoresCamaras = camaras.map(camara => [camara.locacion]);
-
-    // Ejecutar la inserción de las cámaras
-    db.query(sqlCamara, [valoresCamaras], (err, resultCamara) => {
-        if (err) {
-            res.status(500).json({ error: "Error al crear las cámaras" });
-        } else {
-            // Para cada cámara creada, establecer el estado inicial 'Apagada'
-            let idsCamaras = [];
-            for (let i = resultCamara.insertId; i < resultCamara.insertId + camaras.length; i++) {
-                idsCamaras.push([i, 2, new Date()]); // Suponiendo que el ID para 'Apagada' en EstadoCamara es 2
+    const camaras  = req.body;
+    camaras.forEach(camara => {
+        // Insertar en la tabla Camara
+        let sqlCamara = "INSERT INTO Camara (id, locacion) VALUES (?, ?)";
+        db.query(sqlCamara, [camara.id, camara.locacion], (err, resultCamara) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).json({ error: "Error al crear las cámaras" });
             }
 
-            let sqlEstado = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio) VALUES ?";
-            db.query(sqlEstado, [idsCamaras], (err, resultEstado) => {
+            let sqlEstado = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio) VALUES (?, ?, NOW())";
+            db.query(sqlEstado, [camara.id, camara.estado], (err, resultEstado) => {
                 if (err) {
-                    res.status(500).json({ error: "Error al establecer el estado inicial de las cámaras" });
-                } else {
-                    res.status(200).json({ message: "Cámaras creadas y estado inicial establecido a 'Apagada'" });
+                    console.error(err);
+                    return res.status(500).json({ error: "Error al establecer el estado de la cámara" });
                 }
             });
-        }
+        });
     });
+    res.send("Camaras creadas correctamente");
 });
-
 
 
 server.get("/estadoActualCamara/:id", (req, res) => {
@@ -445,6 +474,40 @@ server.post("/guardarRegistro", (req, res) => {
             res.send(result);
         }
     })
+});
+
+server.get("/registro/:id", (req, res) => {
+    const { id } = req.params;
+
+    let sql = `
+        SELECT 
+            R.id, 
+            R.responsable, 
+            R.fecha_creacion, 
+            R.fecha, 
+            R.tipo, 
+            R.descripcion, 
+            R.id_camara,
+            T.color
+        FROM 
+            Registros R
+            JOIN eventos T ON R.tipo = T.tipo
+        WHERE 
+            R.id = ?;
+    `;
+    
+    db.query(sql, [id], (err, result) => {
+        if (err) {
+            console.error(err);
+            res.status(500).json({ error: "Error al obtener el registro" });
+        } else {
+            if (result.length > 0) {
+                res.json(result[0]);
+            } else {
+                res.status(404).json({ message: "Registro no encontrado" });
+            }
+        }
+    });
 });
 
 

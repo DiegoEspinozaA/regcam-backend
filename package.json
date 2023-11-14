@@ -16,7 +16,8 @@
     "express-session": "^1.17.3",
     "jsonwebtoken": "^9.0.2",
     "moment-timezone": "^0.5.43",
-    "mysql": "^2.18.1"
+    "mysql": "^2.18.1",
+    "mysql2": "^3.6.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
