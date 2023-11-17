@@ -1,20 +1,32 @@
 const express = require('express');
-const server = express();
 const mysql = require('mysql');
 const cors = require('cors');
 const session = require('express-session');
-const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const moment = require('moment-timezone');
 moment.tz.setDefault('America/Santiago');
-server.use(session({
+
+const app = express();
+app.use(cors({
+    origin: ['http://localhost:3000'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+}));
+app.use(express.json());
+app.use(cookieParser());
+
+
+app.use(session({
     secret: 'secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
         secure: false,
         maxAge: 1000 * 60 * 60 * 24
-    }
+    },
+    
 }))
+
 const db = mysql.createPool({
     host: "localhost",
     user: "root",
@@ -23,59 +35,38 @@ const db = mysql.createPool({
     charset: "utf8mb4",
 });
 
-server.use(express.json());
-server.use(cors());
-server.use(express.json());
-
 //login
 
-server.get('/', (req, res) => {
-    if (req.session.username) {
-        return res.json({ valid: true, role: req.session.role });
+app.get('/', (req, res) => {
+    if (req.session.rol) {
+        return res.json({ valid: true, rol: req.session.rol });
     } else {
         return res.json({ valid: false });
     }
 })
-server.post('/sigup', (req, res) => {
-    const sql = "insert into users (username, password) values (?)";
-    const values = [
-        req.body.username,
-        req.body.password
-    ]
 
-    db.query(sql, [values], (err, result) => {
-        if (err) return res.json({ Message: "Error en el servidor" });
-        return res.json(result);
-    })
-})
 
-server.post('/login', (req, res) => {
+app.post('/login', (req, res) => {
     const { username, password } = req.body;
+    let sql = "select * from users where username = ? and password = ?";
+    db.query(sql, [username, password], (err, result) => {
+        if(result.length > 0) {
+          req.session.rol = result[0].rol;
+          
+          return res.json({Login: true})
 
-    // Realizar una consulta a la base de datos para verificar las credenciales del usuario
-    const sql = 'SELECT * FROM users WHERE username = ? AND password = ?';
-
-    db.query(sql, [username, password], (err, results) => {
-        if (err) {
-            console.error('Error al consultar la base de datos:', err);
-            res.status(500).json({ error: 'Error en el servidor' });
-        } else if (results.length > 0) {
-            const user = results[0];
-
-            // Generar un token JWT con el rol del usuario
-            const token = jwt.sign({ username: user.username, role: user.role }, 'tu_secreto_secreto', {
-                expiresIn: '1h', // Tiempo de expiración del token
-            });
-
-            res.json({ token, user });
         } else {
-            // Credenciales incorrectas
-            res.status(401).json({ error: 'Credenciales incorrectas' });
+            return res.json({Login: false})
         }
-    });
+    })
 });
 
-server.post("/registrarEvento", (req, res) => {
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    return res.json("Success");
+})
+
+app.post("/registrarEvento", (req, res) => {
     const { fecha } = req.body;
     const { tipo } = req.body;
     const { descripcion } = req.body;
@@ -91,7 +82,7 @@ server.post("/registrarEvento", (req, res) => {
     })
 });
 
-server.get("/registrosCamara/:id", (req, res) => {
+app.get("/registrosCamara/:id", (req, res) => {
     const { id } = req.params;
     let sql = "select registros.id, registros.id_camara, registros.tipo, registros.fecha, eventos.color, registros.descripcion from registros join camara on registros.id_camara = camara.id join eventos on eventos.tipo = registros.tipo where registros.id_camara = ?";
     db.query(sql, [id], (err, result) => {
@@ -105,14 +96,14 @@ server.get("/registrosCamara/:id", (req, res) => {
 });
 
 
-server.delete("/eliminarRegistro/:id", (req, res) => {
+app.delete("/eliminarRegistro/:id", (req, res) => {
     const { id } = req.params;
     let sql = "delete from registros where id = ?"
     db.query(sql, [id], (err, result) => { err ? console.log(err) : res.send(result) })
 })
 
 
-server.get("/locacionCamara/:id", (req, res) => {
+app.get("/locacionCamara/:id", (req, res) => {
     const { id } = req.params;
     let sql = "SELECT locacion from camara where id = ?";
     db.query(sql, [id], (err, result) => {
@@ -124,7 +115,7 @@ server.get("/locacionCamara/:id", (req, res) => {
     })
 });
 
-server.get("/registros", (req, res) => {
+app.get("/registros", (req, res) => {
     let sql = "SELECT registros.id, registros.responsable, registros.fecha_creacion, registros.fecha, registros.tipo, registros.descripcion, registros.id_camara, eventos.color from registros join eventos on registros.tipo = eventos.tipo order by fecha_creacion desc";
     db.query(sql, (err, result) => {
         if (err) {
@@ -136,7 +127,7 @@ server.get("/registros", (req, res) => {
     })
 });
 
-server.get("/locaciones", (req, res) => {
+app.get("/locaciones", (req, res) => {
     let sql = "SELECT locacion from camara group by locacion";
     db.query(sql, (err, result) => {
         if (err) {
@@ -148,7 +139,7 @@ server.get("/locaciones", (req, res) => {
     })
 });
 
-server.post("/registrarEstados", (req, res) => {
+app.post("/registrarEstados", (req, res) => {
     const datos = req.body;
     const insertPromises = datos.map((item) => {
         const { id, evento, fecha } = item;
@@ -176,7 +167,7 @@ server.post("/registrarEstados", (req, res) => {
 });
 
 
-server.get("/camaras", (req, res) => {
+app.get("/camaras", (req, res) => {
     let sql = `
     SELECT 
     C.id,
@@ -208,7 +199,7 @@ ORDER BY
 });
 
 
-server.get("/tiposEventos", (req, res) => {
+app.get("/tiposEventos", (req, res) => {
     let sql = "SELECT * from eventos";
     db.query(sql, (err, result) => {
         if (err) {
@@ -223,7 +214,7 @@ server.get("/tiposEventos", (req, res) => {
 
 
 
-server.get("/historialEstadoCamara/:idCamara", (req, res) => {
+app.get("/historialEstadoCamara/:idCamara", (req, res) => {
     const { idCamara } = req.params;
 
     let sql = `
@@ -260,7 +251,7 @@ ORDER BY
     });
 });
 
-server.get("/historialEstadoCamara", (req, res) => {
+app.get("/historialEstadoCamara", (req, res) => {
 
     let sql = `
     SELECT
@@ -296,7 +287,7 @@ server.get("/historialEstadoCamara", (req, res) => {
 
 
 
-server.post("/actualizarEstadoCamara", (req, res) => {
+app.post("/actualizarEstadoCamara", (req, res) => {
     const { idCamara, nuevoEstadoId } = req.body;
     
     let sql = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio) VALUES (?, ?, NOW())";
@@ -311,7 +302,7 @@ server.post("/actualizarEstadoCamara", (req, res) => {
 
 
 
-server.post("/registrarEstado", (req, res) => {
+app.post("/registrarEstado", (req, res) => {
     const { nombre } = req.body;
     const { superfamilia } = req.body;
     let sql = "insert into Estados (nombre, superfamilia) values (?,?)";
@@ -326,7 +317,7 @@ server.post("/registrarEstado", (req, res) => {
 
 
 
-server.get("/actualizarRegistro/:id", (req, res) => {
+app.get("/actualizarRegistro/:id", (req, res) => {
     const { id } = req.params;
     let sql = "select * from registros where id = ?";
     db.query(sql, [id], (err, result) => {
@@ -340,7 +331,7 @@ server.get("/actualizarRegistro/:id", (req, res) => {
     })
 })
 
-server.get("/estados", (req, res) => {
+app.get("/estados", (req, res) => {
     let sql = "select * from estadoCamara";
     db.query(sql, (err, result) => {
         if (err) {
@@ -351,7 +342,7 @@ server.get("/estados", (req, res) => {
     })
 });
 
-server.post("/crearCamara", (req, res) => {
+app.post("/crearCamara", (req, res) => {
     const camaras  = req.body;
     camaras.forEach(camara => {
         // Insertar en la tabla Camara
@@ -375,7 +366,7 @@ server.post("/crearCamara", (req, res) => {
 });
 
 
-server.get("/estadoActualCamara/:id", (req, res) => {
+app.get("/estadoActualCamara/:id", (req, res) => {
     const { id } = req.params;
 
     let sql = `
@@ -414,7 +405,7 @@ server.get("/estadoActualCamara/:id", (req, res) => {
     });
 });
 
-server.post("/actualizarRegistro", (req, res) => {
+app.post("/actualizarRegistro", (req, res) => {
     const { id } = req.body;
     const { tipo } = req.body;
     const { descripcion } = req.body;
@@ -447,7 +438,7 @@ server.post("/actualizarRegistro", (req, res) => {
     })
 })
 
-server.get("/historial/:id", (req, res) => {
+app.get("/historial/:id", (req, res) => {
     const id = req.params.id;
 
     let sql = "SELECT * from historial where id_registro = ? order by fecha_modificacion desc";
@@ -459,7 +450,7 @@ server.get("/historial/:id", (req, res) => {
         }
     })
 })
-server.post("/guardarRegistro", (req, res) => {
+app.post("/guardarRegistro", (req, res) => {
     const { id_camara } = req.body;
     const { tipo } = req.body;
     const { fecha } = req.body;
@@ -476,7 +467,7 @@ server.post("/guardarRegistro", (req, res) => {
     })
 });
 
-server.get("/registro/:id", (req, res) => {
+app.get("/registro/:id", (req, res) => {
     const { id } = req.params;
 
     let sql = `
@@ -511,7 +502,7 @@ server.get("/registro/:id", (req, res) => {
 });
 
 
-server.put("/actualizarRegistro/:id", (req, res) => {
+app.put("/actualizarRegistro/:id", (req, res) => {
     const registroId = req.params.id;
     const { tipo, fecha, descripcion } = req.body;
 
@@ -529,7 +520,7 @@ server.put("/actualizarRegistro/:id", (req, res) => {
 
 
 
-server.listen(3001, () =>
+app.listen(3001, () =>
     console.log("Corriendo en 3001")
 );
 
