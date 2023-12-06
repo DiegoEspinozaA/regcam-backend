@@ -39,7 +39,7 @@ const db = mysql.createPool({
 
 app.get('/', (req, res) => {
     if (req.session.rol) {
-        return res.json({ valid: true, rol: req.session.rol });
+        return res.json({ valid: true, rol: req.session.rol, username: req.session.username });
     } else {
         return res.json({ valid: false });
     }
@@ -50,8 +50,10 @@ app.post('/login', (req, res) => {
     const { username, password } = req.body;
     let sql = "select * from users where username = ? and password = ?";
     db.query(sql, [username, password], (err, result) => {
+        console.log(result[0])
         if(result.length > 0) {
           req.session.rol = result[0].rol;
+          req.session.username = result[0].username;
           
           return res.json({Login: true})
 
@@ -290,7 +292,8 @@ app.get("/historialEstadoCamara", (req, res) => {
 app.post("/actualizarEstadoCamara", (req, res) => {
     const { idCamara, nuevoEstadoId } = req.body;
     
-    let sql = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio) VALUES (?, ?, NOW())";
+    let sql = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio, fechaFin) VALUES (?, ?, NOW(), NOW())";
+
     db.query(sql, [idCamara, nuevoEstadoId], (err, result) => {
         if (err) {
             res.status(500).json({ error: "Error al actualizar el estado de la cámara" });
@@ -353,7 +356,7 @@ app.post("/crearCamara", (req, res) => {
                 return res.status(500).json({ error: "Error al crear las cámaras" });
             }
 
-            let sqlEstado = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio) VALUES (?, ?, NOW())";
+            let sqlEstado = "INSERT INTO HistorialEstado (idCamara, idEstadoCamara, fechaInicio, fechaFin) VALUES (?, ?, NOW(), NOW())";
             db.query(sqlEstado, [camara.id, camara.estado], (err, resultEstado) => {
                 if (err) {
                     console.error(err);
